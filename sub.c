@@ -5,13 +5,16 @@
 #include <string.h>
 #include "MQTTClient.h"
 #include <unistd.h>
+#include <wait.h>
+#include <assert.h>
 
-#define BROKER_ADDRESS "tcp://127.0.0.1:1883"  // 公共测试服务器
+#define BROKER_ADDRESS "tcp://192.168.1.33:1883"  // 公共测试服务器
 #define CLIENT_ID     "imx6ull_gateway_001"         // 客户端ID（需唯一）
 #define PUB_TOPIC     "imx6ull/led" // 发布主题
 #define SUB_TOPIC     "control/imx6ull"             // 订阅主题
 #define QOS           1                             // 服务质量
 #define TIMEOUT       10000L                        // 超时时间(毫秒)
+
 MQTTClient client;
 //连接丢失回调
 void connection_lost(void *context, char *cause) {
@@ -29,14 +32,52 @@ void connection_lost(void *context, char *cause) {
 int msg_arrived(void *context, char *topicName, int topicLen, MQTTClient_message *msg) {
     printf("Message arrived on topic: %s\n", topicName);
     // printf("Message payload: %.*s\n", msg->payloadlen, (char*)msg->payload);
+    printf("%d\n", msg->payloadlen);
+
     printf("Msg payload: %.*s\n", msg->payloadlen, (char*)msg->payload);
 
     // 这里可以添加处理控制命令的逻辑
     // 例如：if (strstr((char*)message->payload, "reboot")) { system("reboot"); }
+    char led_status = ((char*)msg->payload)[0];
     
+   
+    if (led_status == '0' || led_status == '1') {
+
+        
+       
+        pid_t pid = fork();
+        if (pid > 0) {
+
+            pid_t ret = wait(NULL);
+         
+            assert(ret > 0);
+        } else if (pid == 0){
+          
+            if (led_status == '1') {
+
+                    execl("./led_ctl.sh", "./led_ctl.sh", "1", NULL);
+                } else {
+                    execl("./led_ctl.sh", "./led_ctl.sh", "0", NULL);
+                }
+                 perror("execl failed");
+                 
+        } else {
+            perror("fork error");
+            
+        }
+
+    
+    } else {
+        fprintf(stderr, "arriverd msg err\n");
+        
+    }
+    // char payload[100];
+    // snprintf(payload, sizeof(payload), "{\"led\":\"%d\"}", led_status);
+
     MQTTClient_freeMessage(&msg);
-    MQTTClient_free(topicName);
+    MQTTClient_free(topicName); 
     return 1;
+     
 }
 
 // MQTTClient_deliveryToken token：
@@ -122,20 +163,10 @@ int main(int argc, char *argv[]) {
     printf("MQTT connected successfully!\n");
 
     while (1) {
-
-        char payload[100];
-        int i = 1;
-        snprintf(payload, sizeof(payload), "{\"led\":\"%d\"}", i);
-        i = -i;
-
-        int rc;
-        if ((rc = mqtt_publish(SUB_TOPIC, payload) != MQTTCLIENT_SUCCESS)) {
-            fprintf(stderr, "mqtt_publish error code:%d\n", rc);
-            MQTTClient_disconnect(client, TIMEOUT);
-            return -1;
-        }
-        sleep(5);
-
+        
+      
+        sleep(1);
+        
     }
 
     return 0;
